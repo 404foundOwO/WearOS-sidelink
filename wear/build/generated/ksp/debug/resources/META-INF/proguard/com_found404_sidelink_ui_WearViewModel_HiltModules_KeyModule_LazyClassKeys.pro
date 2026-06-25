@@ -1,0 +1,1 @@
+-keep,allowobfuscation,allowshrinking class com.found404.sidelink.ui.WearViewModel
