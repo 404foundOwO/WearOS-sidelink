@@ -1,18 +1,69 @@
-# Phone to Wear OS notification app
-A app for mirroring phone notifications and media. Primarily made for secondary or "unsupported by the watch" phones.
-It has features like media control,volume adjust with haptic,album art, notification replies,icons,auto reconnect, app filtering and delete-sync on both sides.Also has a test notification field, can be used for sending custom notifications. The app doesn't even have an icon yet, i don't know if it needs since it's designed to be set and forget type of app... help appericated!
+# Sidelink
 
-# How does it work?
-The phone app listens for new notification entries,If an app posts a notification, the app grabs the information/icon into compressed Base64 data. No google services are used, pure RFCOMM. No  data is being sent to servers (neither i know how to!), That means it's offline. 
+![Android](https://img.shields.io/badge/Android-11%2B-brightgreen?logo=android)
+![Wear OS](https://img.shields.io/badge/Wear%20OS-3%2B-blue?logo=wear-os)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-# Installation (Phone side)
-- Install the .apk file (May need to enable installing from "unknown sources".)
-- Give the Neccessary permissions shown at the start (Be sure to disable battery optimization on settings)
-- Select your device from the dropdown, It must be paired for it to show up.
-- It should connect and start doing it's job when it's connected!
+A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Google services, no servers, no accounts. Primarily made for secondary or unsupported phones that don't have official watch companion support.
 
-# Installation (Watch side)
-- Install the .apk (I recommend AnExplorer to install .apk and File browser by Orienlabs to import the file)
-- Give permission shown at first launch
-- That's all!
+**Features:**
+- Notification mirroring with app icons
+- Reply and dismiss from the watch
+- Media controls with album art
+- Volume adjustment with haptic feedback
+- Watch battery display on phone
+- App filtering and blacklist
+- Auto reconnect
+- Notification caching (sends missed notifs after reconnect)
+- Set and forget, runs silently in the background
 
+> No data is sent to any server. Everything stays between your phone and watch over Bluetooth.
+
+---
+
+## Screenshots
+soon
+<!-- Add screenshots here -->
+
+---
+
+## Requirements
+
+- Android phone running **Android 11 (API 30)** or higher
+- Wear OS watch running **Wear OS 3** or higher
+- Watch must be **Bluetooth paired** to the phone before setup
+
+---
+
+## Installation
+
+### Phone (Android 11+)
+
+1. Download and install the phone `.apk` 
+2. Grant the permissions shown at first launch
+3. Select your paired watch from the dropdown
+4. Connect!
+
+### Watch (Wear OS 3+)
+
+1. Transfer the watch `.apk` to your watch (recommended: [File Browser by Orienlabs](https://play.google.com/store/apps/details?id=com.orienlabs.filebrowser.wear) to import, [AnExplorer](https://play.google.com/store/apps/details?id=dev.dworks.apps.anexplorer) to install)
+2. Grant the permissions shown at first launch
+3. Now it should be ready.
+
+---
+
+## How does it work?
+
+The phone app runs a `NotificationListenerService` that intercepts incoming notifications and streams them to the watch over a Bluetooth RFCOMM connection. No Google services or cloud infrastructure is involved, it's a direct socket connection between devices.
+
+Messages are JSON sent over a persistent connection with a ping/pong keepalive. The watch receives notifications and posts them natively, so they show up just like any other watch notification with reply and dismiss support.
+
+---
+
+## Known limitations
+
+- Both devices must be within Bluetooth range
+- Depending on the phone model, OS can kill the service freely.
+- Watch must be paired to the phone via system Bluetooth settings before use
+
+---
