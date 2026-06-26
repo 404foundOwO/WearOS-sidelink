@@ -22,7 +22,7 @@ A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Goog
 ---
 
 ## Screenshots
-soon
+<img src="Settings.png" width="200" style="vertical-align:top"> <img src="Media.png" width="200" style="vertical-align:top"> <img src="MediaAOD.png" width="200" style="vertical-align:top"> <img src="Notetest.png" width="200" style="vertical-align:top">
 <!-- Add screenshots here -->
 
 ---
