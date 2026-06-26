@@ -1,1 +1,0 @@
--keep,allowobfuscation,allowshrinking class com.owo.notifmirror.ui.WearViewModel

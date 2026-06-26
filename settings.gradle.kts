@@ -22,7 +22,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Notif Mirror"
+rootProject.name = "Sidelink"
 include(":app")
 include(":wear")
 include(":shared")
