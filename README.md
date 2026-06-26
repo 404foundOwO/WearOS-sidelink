@@ -49,7 +49,7 @@ A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Goog
 1. Transfer the watch `.apk` to your watch (recommended: [File Browser by Orienlabs](https://play.google.com/store/apps/details?id=com.orienlabs.filebrowser.wear) to import)
 2. Install the .apk (recommended:[AnExplorer](https://play.google.com/store/apps/details?id=dev.dworks.apps.anexplorer)) 
 3. Grant the permissions shown at first launch
-4. Should be ready for connections
+4. Ready for connections!
 
 ---
 ## Usage
