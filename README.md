@@ -52,6 +52,9 @@ A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Goog
 4. Should be ready for connections
 
 ---
+## Usage
+-In the watch app, volume controlled with rotating bezel.
+-The media controller in the watchface can be disabled from android settings.
 
 ## How does it work?
 
