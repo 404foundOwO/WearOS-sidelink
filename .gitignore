@@ -1,0 +1,40 @@
+# Built output
+/build
+app/build
+wear/build
+shared/build
+
+# Gradle
+.gradle
+gradle/wrapper/gradle-wrapper.jar
+
+# Local config
+local.properties
+
+# Android Studio / IntelliJ
+*.iml
+.idea/caches
+.idea/libraries
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/deploymentTargetSelector.xml
+.idea/deviceStreaming.xml
+
+# macOS
+.DS_Store
+
+# Native build
+.externalNativeBuild
+.cxx
+
+# Captures (Android Profiler)
+/captures
+
+# All module build folders
+**/build
+
+# Release APKs
+app/release
+wear/release
