@@ -4,7 +4,7 @@
 ![Wear OS](https://img.shields.io/badge/Wear%20OS-3%2B-blue?logo=wear-os)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Google services, no servers, no accounts. Primarily made for secondary or unsupported phones that don't have official watch companion support.
+A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Google services, no servers, no accounts. Primarily made for secondary or unsupported phones that don't have official watch companion support.Originally was made for personal use,but released here if someone needs these kind of stuff.
 
 **Features:**
 - Notification mirroring with app icons
