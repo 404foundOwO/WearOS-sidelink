@@ -37,18 +37,19 @@ A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Goog
 
 ## Installation
 
-### Phone (Android 11+)
+### Phone
 
 1. Download and install the phone `.apk` 
 2. Grant the permissions shown at first launch
 3. Select your paired watch from the dropdown
 4. Connect!
 
-### Watch (Wear OS 3+)
+### Watch 
 
-1. Transfer the watch `.apk` to your watch (recommended: [File Browser by Orienlabs](https://play.google.com/store/apps/details?id=com.orienlabs.filebrowser.wear) to import, [AnExplorer](https://play.google.com/store/apps/details?id=dev.dworks.apps.anexplorer) to install)
-2. Grant the permissions shown at first launch
-3. Now it should be ready.
+1. Transfer the watch `.apk` to your watch (recommended: [File Browser by Orienlabs](https://play.google.com/store/apps/details?id=com.orienlabs.filebrowser.wear) to import)
+2. Install the .apk (recommended:[AnExplorer](https://play.google.com/store/apps/details?id=dev.dworks.apps.anexplorer)) 
+3. Grant the permissions shown at first launch
+4. Should be ready for connections
 
 ---
 
@@ -62,8 +63,6 @@ Messages are JSON sent over a persistent connection with a ping/pong keepalive. 
 
 ## Known limitations
 
-- Both devices must be within Bluetooth range
-- Depending on the phone model, OS can kill the service freely.
-- Watch must be paired to the phone via system Bluetooth settings before use
 
----
+- Depending on the phone/wear model, OS can kill the service freely.
+- Watch must be paired to the phone via system Bluetooth settings before use
