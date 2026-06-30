@@ -25,6 +25,7 @@ class SettingsRepository(private val context: Context) {
     private val MAX_MIRRORED_NOTIFICATIONS = intPreferencesKey("max_mirrored_notifications")
     private val KEEP_ALIVE_INTERVAL_SEC = intPreferencesKey("keep_alive_interval_sec")
     private val AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
+    private val CONNECT_HFP = booleanPreferencesKey("connect_hfp")
 
     val reconnectionTimeout: Flow<Long> = context.dataStore.data
         .map { it[RECONNECTION_TIMEOUT] ?: 800L }
@@ -58,6 +59,9 @@ class SettingsRepository(private val context: Context) {
 
     val autoReconnectEnabled: Flow<Boolean> = context.dataStore.data
         .map { it[AUTO_RECONNECT] ?: true }
+
+    val connectHfpEnabled: Flow<Boolean> = context.dataStore.data
+        .map { it[CONNECT_HFP] ?: false }
 
     suspend fun setBatteryOptPromptShown() {
         context.dataStore.edit { it[BATTERY_OPT_PROMPT_SHOWN] = true }
@@ -116,5 +120,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setAutoReconnectEnabled(enabled: Boolean) {
         context.dataStore.edit { it[AUTO_RECONNECT] = enabled }
+    }
+
+    suspend fun setConnectHfpEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[CONNECT_HFP] = enabled }
     }
 }

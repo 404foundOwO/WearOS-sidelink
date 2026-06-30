@@ -1,4 +1,4 @@
-package com.found404.sidelink.ui
+﻿package com.found404.sidelink.ui
 
 import android.content.Context
 import android.content.Intent
@@ -78,6 +78,7 @@ fun SidelinkApp(viewModel: MainViewModel = viewModel()) {
     val keepAliveIntervalSec by viewModel.keepAliveIntervalSec.collectAsStateWithLifecycle()
     val autoReconnectEnabled by viewModel.autoReconnectEnabled.collectAsStateWithLifecycle()
     val reconnectionTimeout by viewModel.reconnectionTimeout.collectAsStateWithLifecycle()
+    val connectHfpEnabled by viewModel.connectHfpEnabled.collectAsStateWithLifecycle()
     val watchBatteryLevel by viewModel.watchBatteryLevel.collectAsStateWithLifecycle()
 
     val navController = rememberNavController()
@@ -85,7 +86,7 @@ fun SidelinkApp(viewModel: MainViewModel = viewModel()) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: "notifications"
 
-    // Battery optimization prompt — one time only
+    // Battery optimization prompt â€” one time only
     if (!batteryOptShown) {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val isIgnoring = pm.isIgnoringBatteryOptimizations(context.packageName)
@@ -194,6 +195,7 @@ fun SidelinkApp(viewModel: MainViewModel = viewModel()) {
                     maxMirroredNotifications = maxMirroredNotifications,
                     keepAliveIntervalSec = keepAliveIntervalSec,
                     autoReconnectEnabled = autoReconnectEnabled,
+                    connectHfpEnabled = connectHfpEnabled,
                     reconnectionTimeout = reconnectionTimeout,
                     onToggleBlacklist = { viewModel.togglePackageBlacklist(it) },
                     onOpenBT = { viewModel.openBluetoothSettings(context) },
@@ -208,6 +210,7 @@ fun SidelinkApp(viewModel: MainViewModel = viewModel()) {
                     onMaxNotificationsChange = { viewModel.setMaxMirroredNotifications(it) },
                     onKeepAliveChange = { viewModel.setKeepAliveIntervalSec(it) },
                     onAutoReconnectChange = { viewModel.setAutoReconnectEnabled(it) },
+                    onConnectHfpChange = { viewModel.setConnectHfpEnabled(it) },
                     onReconnectionTimeoutChange = { viewModel.setReconnectionTimeout(it) }
                 )
             }
@@ -398,6 +401,7 @@ fun SettingsScreen(
     maxMirroredNotifications: Int,
     keepAliveIntervalSec: Int,
     autoReconnectEnabled: Boolean,
+    connectHfpEnabled: Boolean,
     reconnectionTimeout: Long,
     onToggleBlacklist: (String) -> Unit,
     onOpenBT: () -> Unit,
@@ -412,6 +416,7 @@ fun SettingsScreen(
     onMaxNotificationsChange: (Int) -> Unit = {},
     onKeepAliveChange: (Int) -> Unit = {},
     onAutoReconnectChange: (Boolean) -> Unit = {},
+    onConnectHfpChange: (Boolean) -> Unit = {},
     onReconnectionTimeoutChange: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -608,6 +613,15 @@ fun SettingsScreen(
                 subtitle = "Keep trying to reconnect, don't think it gives up",
                 checked = autoReconnectEnabled,
                 onCheckedChange = onAutoReconnectChange
+            )
+        }
+
+        item {
+            SettingsToggleRow(
+                title = "Call audio (HFP)",
+                subtitle = "Experimental: connect the watch for calls alongside notifications.",
+                checked = connectHfpEnabled,
+                onCheckedChange = onConnectHfpChange
             )
         }
 

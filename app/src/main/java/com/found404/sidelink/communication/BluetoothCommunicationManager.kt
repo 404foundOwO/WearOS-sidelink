@@ -2,6 +2,8 @@ package com.found404.sidelink.communication
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothHeadset
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
@@ -53,6 +55,8 @@ class BluetoothCommunicationManager private constructor(private val context: Con
     @Volatile private var keepAliveIntervalSec = 45
     @Volatile private var firstRetryDelayMs = 800L
     @Volatile private var includeNotificationIcons = true
+    @Volatile private var connectHfpEnabled = false
+    private var hfpProxy: BluetoothHeadset? = null
 
     private val _watchBatteryLevel = MutableStateFlow<Int?>(null)
     val watchBatteryLevel: StateFlow<Int?> = _watchBatteryLevel.asStateFlow()
@@ -130,6 +134,9 @@ class BluetoothCommunicationManager private constructor(private val context: Con
         }
         scope.launch {
             settingsRepository.mirrorNotificationIcons.collect { includeNotificationIcons = it }
+        }
+        scope.launch {
+            settingsRepository.connectHfpEnabled.collect { connectHfpEnabled = it }
         }
     }
 
@@ -286,7 +293,10 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                     }
                     Log.d(TAG, "CLIENT: handshake OK via $label")
                     _lastError.value = null
-                    startHeartbeat()
+                    startHeartbeat(device)
+                    if (connectHfpEnabled) {
+                        connectHfpProfile(device)
+                    }
                     withContext(Dispatchers.Main.immediate) {
                         listener?.onConnectionStateChanged(true)
                     }
@@ -305,7 +315,85 @@ class BluetoothCommunicationManager private constructor(private val context: Con
         return false
     }
 
-    private fun startHeartbeat() {
+    /**
+     * Attempts to bring up the Hands-Free Profile (HFP) connection to the watch using the
+     * hidden BluetoothHeadset#connect(BluetoothDevice) method via reflection, since it is not
+     * part of the public SDK. This only makes the watch appear "connected" for calls in its
+     * system Bluetooth UI; Sidelink itself does not route call audio.
+     *
+     * Best-effort only: failures are logged and swallowed so they never affect the RFCOMM
+     * notification channel, which is the app's core function.
+     */
+    private fun connectHfpProfile(device: BluetoothDevice) {
+        try {
+            bluetoothAdapter?.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    if (profile != BluetoothProfile.HEADSET) return
+                    hfpProxy = proxy as? BluetoothHeadset
+                    try {
+                        val connectMethod = BluetoothHeadset::class.java.getMethod("connect", BluetoothDevice::class.java)
+                        connectMethod.invoke(hfpProxy, device)
+                        Log.d(TAG, "CLIENT: HFP connect requested")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "CLIENT: HFP connect failed: ${e.message}")
+                    }
+                }
+
+                override fun onServiceDisconnected(profile: Int) {
+                    hfpProxy = null
+                }
+            }, BluetoothProfile.HEADSET)
+        } catch (e: Exception) {
+            Log.w(TAG, "CLIENT: HFP proxy setup failed: ${e.message}")
+        }
+    }
+
+    private fun disconnectHfpProfile(device: BluetoothDevice?) {
+        val proxy = hfpProxy ?: return
+        try {
+            if (device != null) {
+                val disconnectMethod = BluetoothHeadset::class.java.getMethod("disconnect", BluetoothDevice::class.java)
+                disconnectMethod.invoke(proxy, device)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "CLIENT: HFP disconnect failed: ${e.message}")
+        } finally {
+            try {
+                bluetoothAdapter?.closeProfileProxy(BluetoothProfile.HEADSET, proxy)
+            } catch (_: Exception) {
+            }
+            hfpProxy = null
+        }
+    }
+
+    /**
+     * Returns true if the watch is currently connected on the HFP profile, false otherwise.
+     * Uses the public BluetoothProfile#getConnectionState(BluetoothDevice) API on whatever
+     * proxy we currently hold; if we don't hold a proxy yet, treats it as disconnected so the
+     * watchdog will attempt to (re)connect.
+     */
+    private fun isHfpConnected(device: BluetoothDevice): Boolean {
+        val proxy = hfpProxy ?: return false
+        return try {
+            proxy.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Periodically checked from the heartbeat loop while RFCOMM stays connected. HFP can drop
+     * independently of our RFCOMM socket (watch sleep, OS profile teardown, etc.), and nothing
+     * else will bring it back up since Sidelink is the one that originally requested it.
+     */
+    private fun maintainHfpConnection(device: BluetoothDevice) {
+        if (!connectHfpEnabled) return
+        if (hfpProxy != null && isHfpConnected(device)) return
+        Log.d(TAG, "CLIENT: HFP not connected, retrying")
+        connectHfpProfile(device)
+    }
+
+    private fun startHeartbeat(device: BluetoothDevice) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
             delay(5_000)
@@ -322,6 +410,7 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                     teardownSocket(notifyListener = true)
                     break
                 }
+                maintainHfpConnection(device)
                 val intervalMs = keepAliveIntervalSec.coerceIn(15, 120) * 1000L
                 delay(intervalMs)
             }
@@ -528,6 +617,10 @@ class BluetoothCommunicationManager private constructor(private val context: Con
         heartbeatJob?.cancel()
         readJob?.cancel()
         readJob = null
+        if (connectHfpEnabled) {
+            val deviceForHfp = clientSocket?.remoteDevice
+            disconnectHfpProfile(deviceForHfp)
+        }
         try {
             clientSocket?.close()
         } catch (_: Exception) {

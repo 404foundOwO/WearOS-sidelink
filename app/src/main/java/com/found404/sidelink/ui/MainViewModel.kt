@@ -70,6 +70,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val reconnectionTimeout: StateFlow<Long> = settingsRepository.reconnectionTimeout
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 800L)
 
+    val connectHfpEnabled: StateFlow<Boolean> = settingsRepository.connectHfpEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val watchBatteryLevel = commManager.watchBatteryLevel
 
     private val _pairedDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
@@ -174,6 +177,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAutoReconnectEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setAutoReconnectEnabled(enabled) }
+    }
+
+    fun setConnectHfpEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setConnectHfpEnabled(enabled) }
     }
 
     fun clearLogs() {
