@@ -4,7 +4,7 @@
 ![Wear OS](https://img.shields.io/badge/Wear%20OS-3%2B-blue?logo=wear-os)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Google services, no servers, no accounts. Primarily made for secondary or unsupported phones that don't have official watch companion support.
+A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Google services, no servers, no accounts. Primarily made for secondary or unsupported phones that don't have official watch companion support.Originally was made for personal use,but released here if someone needs these kind of stuff.
 
 **Features:**
 - Notification mirroring with app icons
@@ -49,7 +49,7 @@ A phone-to-watch notification mirroring app using pure Bluetooth RFCOMM. No Goog
 1. Transfer the watch `.apk` to your watch (recommended: [File Browser by Orienlabs](https://play.google.com/store/apps/details?id=com.orienlabs.filebrowser.wear) to import)
 2. Install the .apk (recommended:[AnExplorer](https://play.google.com/store/apps/details?id=dev.dworks.apps.anexplorer)) 
 3. Grant the permissions shown at first launch
-4. Should be ready for connections
+4. Ready for connections!
 
 ---
 ## Usage
