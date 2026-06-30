@@ -13,14 +13,7 @@ local.properties
 
 # Android Studio / IntelliJ
 *.iml
-.idea/caches
-.idea/libraries
-.idea/modules.xml
-.idea/workspace.xml
-.idea/navEditor.xml
-.idea/assetWizardSettings.xml
-.idea/deploymentTargetSelector.xml
-.idea/deviceStreaming.xml
+.idea/
 
 # macOS
 .DS_Store
