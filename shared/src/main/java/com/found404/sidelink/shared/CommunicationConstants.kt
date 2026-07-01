@@ -57,4 +57,6 @@ object CommunicationConstants {
     const val KEY_PROGRESS_MAX = "progressMax"
     const val KEY_PROGRESS_CURRENT = "progressCurrent"
     const val KEY_PROGRESS_INDETERMINATE = "progressIndeterminate"
+    const val KEY_PROGRESS_SEQ = "progressSeq"
+    const val TYPE_OPEN_ON_PHONE = "open_on_phone"
 }

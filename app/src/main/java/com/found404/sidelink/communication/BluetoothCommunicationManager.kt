@@ -90,6 +90,9 @@ class BluetoothCommunicationManager private constructor(private val context: Con
     var listener: BluetoothMessageListener? = null
     private val unacknowledgedNotifications = mutableMapOf<String, NotificationData>()
     private val pendingDismissals = mutableSetOf<String>()
+    private val progressRateLimit = mutableMapOf<String, Long>()
+    private val progressPendingFlush = mutableMapOf<String, Job>()
+    private val progressSequence = mutableMapOf<String, Long>()
     private val wakeLock: PowerManager.WakeLock by lazy {
         (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Sidelink:BluetoothSend")
@@ -103,6 +106,7 @@ class BluetoothCommunicationManager private constructor(private val context: Con
         fun onWatchBatteryReceived(level: Int)
         fun onConnectionStateChanged(connected: Boolean)
         fun onActionTriggerReceived(notificationId: String, actionIndex: Int)
+        fun onOpenOnPhoneReceived(notificationId: String)
     }
 
     /**
@@ -467,6 +471,9 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                             json.getString(CommunicationConstants.KEY_ID),
                             json.getInt(CommunicationConstants.KEY_ACTION_INDEX)
                         )
+                        CommunicationConstants.TYPE_OPEN_ON_PHONE -> listener?.onOpenOnPhoneReceived(
+                            json.getString(CommunicationConstants.KEY_ID)
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -500,8 +507,49 @@ class BluetoothCommunicationManager private constructor(private val context: Con
         if (!connectionState.value) return
         scope.launch {
             try {
+                // Throttle progress notifications: send immediately if outside window,
+                // otherwise schedule a flush of the latest value after the window expires
+                val hasProgress = notification.progressIndeterminate || notification.progressMax > 0
+                if (hasProgress) {
+                    val now = System.currentTimeMillis()
+                    val last = synchronized(progressRateLimit) { progressRateLimit[notification.id] ?: 0L }
+                    if (now - last < 800L) {
+                        // Within window — cancel previous pending flush and schedule a new one
+                        synchronized(progressPendingFlush) {
+                            progressPendingFlush[notification.id]?.cancel()
+                            progressPendingFlush[notification.id] = scope.launch {
+                                delay(800L - (now - last))
+                                synchronized(progressRateLimit) { progressRateLimit[notification.id] = System.currentTimeMillis() }
+                                sendNotificationPayload(notification)
+                            }
+                        }
+                        return@launch
+                    }
+                    synchronized(progressRateLimit) { progressRateLimit[notification.id] = now }
+                    // Cancel any pending flush since we're sending now
+                    synchronized(progressPendingFlush) {
+                        progressPendingFlush[notification.id]?.cancel()
+                        progressPendingFlush.remove(notification.id)
+                    }
+                }
                 val iconBase64 = if (includeNotificationIcons) notification.icon?.toBase64Png() else null
-                val json = JSONObject().apply {
+                sendNotificationPayload(notification, iconBase64)
+            } catch (e: Exception) {
+                Log.e(TAG, "CLIENT: notify sync failed", e)
+            }
+        }
+    }
+
+    private suspend fun sendNotificationPayload(notification: NotificationData, iconBase64: String? = null) {
+        val icon = iconBase64 ?: if (includeNotificationIcons) notification.icon?.toBase64Png() else null
+        val seq = if (notification.progressIndeterminate || notification.progressMax > 0) {
+            synchronized(progressSequence) {
+                val next = System.currentTimeMillis()
+                progressSequence[notification.id] = next
+                next
+            }
+        } else -1L
+        val json = JSONObject().apply {
                     put(CommunicationConstants.KEY_TYPE, CommunicationConstants.TYPE_NOTIFICATION)
                     put(CommunicationConstants.KEY_ID, notification.id)
                     put(CommunicationConstants.KEY_PACKAGE, notification.packageName)
@@ -510,7 +558,7 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                     put(CommunicationConstants.KEY_TIMESTAMP, notification.timestamp)
                     put(CommunicationConstants.KEY_HAS_REPLY, notification.hasReply)
                     notification.appName?.let { put(CommunicationConstants.KEY_APP_NAME, it) }
-                    iconBase64?.let { put(CommunicationConstants.KEY_ICON, it) }
+                    icon?.let { put(CommunicationConstants.KEY_ICON, it) }
                     if (notification.messages.isNotEmpty()) {
                         val arr = org.json.JSONArray()
                         notification.messages.forEach { msg ->
@@ -536,13 +584,10 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                         put(CommunicationConstants.KEY_PROGRESS_MAX, notification.progressMax)
                         put(CommunicationConstants.KEY_PROGRESS_CURRENT, notification.progressCurrent)
                         put(CommunicationConstants.KEY_PROGRESS_INDETERMINATE, notification.progressIndeterminate)
+                        put(CommunicationConstants.KEY_PROGRESS_SEQ, seq)
                     }
                 }
-                sendWithWakeLock(json.toString())
-            } catch (e: Exception) {
-                Log.e(TAG, "CLIENT: notify sync failed", e)
-            }
-        }
+        sendWithWakeLock(json.toString())
     }
 
     fun sendVolumeState(percentage: Int) = scope.launch {
@@ -608,6 +653,12 @@ class BluetoothCommunicationManager private constructor(private val context: Con
     }
 
     fun dismissNotification(id: String) = scope.launch {
+        synchronized(progressRateLimit) { progressRateLimit.remove(id) }
+        synchronized(progressSequence) { progressSequence.remove(id) }
+        synchronized(progressPendingFlush) {
+            progressPendingFlush[id]?.cancel()
+            progressPendingFlush.remove(id)
+        }
         synchronized(pendingDismissals) {
             pendingDismissals.add(id)
             if (pendingDismissals.size > 100) {

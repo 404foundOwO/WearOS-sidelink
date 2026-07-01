@@ -78,6 +78,7 @@ class BluetoothCommunicationManager @Inject constructor(
     // Accumulates MessagingStyle messages per notification ID so chat conversations
     // stack up properly even when the phone sends separate notifications for each message
     private val messagingStyleHistory = mutableMapOf<String, MutableList<Triple<String, String, Long>>>()
+    private val progressSeqTracker = mutableMapOf<String, Long>()
 
     internal var mediaSession: MediaSessionCompat? = null
 
@@ -335,10 +336,21 @@ class BluetoothCommunicationManager @Inject constructor(
                         progressCurrent = json.optInt(CommunicationConstants.KEY_PROGRESS_CURRENT, 0),
                         progressIndeterminate = json.optBoolean(CommunicationConstants.KEY_PROGRESS_INDETERMINATE, false)
                     )
-                    repository.addOrUpdateNotification(data)
-                    withContext(Dispatchers.Main) {
-                        showNativeNotification(data, messagingStyleHistory[notifId], incomingActions)
-                        sendNotifAck(data.id)
+
+                    // Drop stale progress updates — only apply if seq is newer than last seen
+                    val incomingSeq = json.optLong(CommunicationConstants.KEY_PROGRESS_SEQ, -1L)
+                    val isStale = if (incomingSeq >= 0) {
+                        val lastSeq = progressSeqTracker[notifId] ?: -1L
+                        if (incomingSeq > lastSeq) progressSeqTracker[notifId] = incomingSeq
+                        incomingSeq <= lastSeq
+                    } else false
+
+                    if (!isStale) {
+                        repository.addOrUpdateNotification(data)
+                        withContext(Dispatchers.Main) {
+                            showNativeNotification(data, messagingStyleHistory[notifId], incomingActions)
+                            sendNotifAck(data.id)
+                        }
                     }
                 }
 
@@ -379,6 +391,7 @@ class BluetoothCommunicationManager @Inject constructor(
                     val id = json.getString(CommunicationConstants.KEY_ID)
                     repository.removeNotification(id)
                     messagingStyleHistory.remove(id)
+                    progressSeqTracker.remove(id)
                     withContext(Dispatchers.Main) { 
                         cancelNativeNotification(id)
                         sendNotifAck(id)
@@ -445,6 +458,11 @@ class BluetoothCommunicationManager @Inject constructor(
         put(CommunicationConstants.KEY_TYPE, CommunicationConstants.TYPE_ACTION_TRIGGER)
         put(CommunicationConstants.KEY_ID, notificationId)
         put(CommunicationConstants.KEY_ACTION_INDEX, actionIndex)
+    }.toString())
+
+    fun sendOpenOnPhone(notificationId: String) = send(JSONObject().apply {
+        put(CommunicationConstants.KEY_TYPE, CommunicationConstants.TYPE_OPEN_ON_PHONE)
+        put(CommunicationConstants.KEY_ID, notificationId)
     }.toString())
 
     private fun sendNotifAck(id: String) = send(JSONObject().apply {
@@ -538,6 +556,19 @@ class BluetoothCommunicationManager @Inject constructor(
                                     android.R.drawable.ic_menu_send, label, actionPendingIntent
                                 ).build())
                             }
+                            // "Show on phone" always last
+                            val openIntent = Intent(context, WearNotificationReceiver::class.java).apply {
+                                action = "com.found404.sidelink.OPEN_ON_PHONE"
+                                putExtra("notification_id", data.id)
+                            }
+                            val openPendingIntent = PendingIntent.getBroadcast(
+                                context, (data.id.hashCode() + 999),
+                                openIntent,
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
+                            addAction(NotificationCompat.Action.Builder(
+                                android.R.drawable.ic_menu_share, "Show on phone", openPendingIntent
+                            ).build())
                         }
 
                     if (!messages.isNullOrEmpty()) {

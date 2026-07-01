@@ -42,6 +42,12 @@ class WearNotificationReceiver : BroadcastReceiver() {
                         }
                     }
                 }
+                "com.found404.sidelink.OPEN_ON_PHONE" -> {
+                    if (id != null) {
+                        Log.d("WearReceiver", "Open on phone: $id")
+                        commManager.sendOpenOnPhone(id)
+                    }
+                }
                 "com.found404.sidelink.CMD_MEDIA_PLAY" -> commManager.sendMediaAction(CommunicationConstants.ACTION_PLAY)
                 "com.found404.sidelink.CMD_MEDIA_PAUSE" -> commManager.sendMediaAction(CommunicationConstants.ACTION_PAUSE)
                 "com.found404.sidelink.CMD_MEDIA_NEXT" -> commManager.sendMediaAction(CommunicationConstants.ACTION_NEXT)

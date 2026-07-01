@@ -207,6 +207,16 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
         }
     }
 
+    override fun onOpenOnPhoneReceived(notificationId: String) {
+        try {
+            val sbn = activeSbnCache[notificationId] ?: return
+            sbn.notification.contentIntent?.send()
+            Log.d(TAG, "Opened on phone: $notificationId")
+        } catch (e: Exception) {
+            Log.e(TAG, "onOpenOnPhoneReceived failed", e)
+        }
+    }
+
     override fun onActionTriggerReceived(notificationId: String, actionIndex: Int) {
         try {
             val sbn = activeSbnCache[notificationId] ?: return
