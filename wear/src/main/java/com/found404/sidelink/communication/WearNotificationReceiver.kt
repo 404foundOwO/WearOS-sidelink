@@ -33,6 +33,15 @@ class WearNotificationReceiver : BroadcastReceiver() {
                         commManager.sendDismiss(id)
                     }
                 }
+                "com.found404.sidelink.ACTION_TRIGGER" -> {
+                    if (id != null) {
+                        val actionIndex = intent.getIntExtra("action_index", -1)
+                        if (actionIndex >= 0) {
+                            Log.d("WearReceiver", "Action trigger $actionIndex on $id")
+                            commManager.sendActionTrigger(id, actionIndex)
+                        }
+                    }
+                }
                 "com.found404.sidelink.CMD_MEDIA_PLAY" -> commManager.sendMediaAction(CommunicationConstants.ACTION_PLAY)
                 "com.found404.sidelink.CMD_MEDIA_PAUSE" -> commManager.sendMediaAction(CommunicationConstants.ACTION_PAUSE)
                 "com.found404.sidelink.CMD_MEDIA_NEXT" -> commManager.sendMediaAction(CommunicationConstants.ACTION_NEXT)

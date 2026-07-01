@@ -102,6 +102,7 @@ class BluetoothCommunicationManager private constructor(private val context: Con
         fun onVolumeDeltaReceived(delta: Float)
         fun onWatchBatteryReceived(level: Int)
         fun onConnectionStateChanged(connected: Boolean)
+        fun onActionTriggerReceived(notificationId: String, actionIndex: Int)
     }
 
     /**
@@ -462,6 +463,10 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                         CommunicationConstants.TYPE_MEDIA_CONTROL -> listener?.onMediaActionReceived(json.getString(CommunicationConstants.KEY_ACTION))
                         CommunicationConstants.TYPE_VOLUME_DELTA -> listener?.onVolumeDeltaReceived(json.optDouble(CommunicationConstants.KEY_VALUE).toFloat())
                         CommunicationConstants.TYPE_BATTERY_STATUS -> listener?.onWatchBatteryReceived(json.optInt(CommunicationConstants.KEY_BATTERY_LEVEL, -1))
+                        CommunicationConstants.TYPE_ACTION_TRIGGER -> listener?.onActionTriggerReceived(
+                            json.getString(CommunicationConstants.KEY_ID),
+                            json.getInt(CommunicationConstants.KEY_ACTION_INDEX)
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -506,6 +511,32 @@ class BluetoothCommunicationManager private constructor(private val context: Con
                     put(CommunicationConstants.KEY_HAS_REPLY, notification.hasReply)
                     notification.appName?.let { put(CommunicationConstants.KEY_APP_NAME, it) }
                     iconBase64?.let { put(CommunicationConstants.KEY_ICON, it) }
+                    if (notification.messages.isNotEmpty()) {
+                        val arr = org.json.JSONArray()
+                        notification.messages.forEach { msg ->
+                            arr.put(JSONObject().apply {
+                                put(CommunicationConstants.KEY_MSG_SENDER, msg.sender)
+                                put(CommunicationConstants.KEY_MSG_TEXT, msg.text)
+                                put(CommunicationConstants.KEY_MSG_TIMESTAMP, msg.timestamp)
+                            })
+                        }
+                        put(CommunicationConstants.KEY_MESSAGES, arr)
+                    }
+                    if (notification.actions.isNotEmpty()) {
+                        val arr = org.json.JSONArray()
+                        notification.actions.forEach { action ->
+                            arr.put(JSONObject().apply {
+                                put(CommunicationConstants.KEY_ACTION_INDEX, action.index)
+                                put(CommunicationConstants.KEY_ACTION_LABEL, action.label)
+                            })
+                        }
+                        put(CommunicationConstants.KEY_ACTIONS, arr)
+                    }
+                    if (notification.progressIndeterminate || notification.progressMax > 0) {
+                        put(CommunicationConstants.KEY_PROGRESS_MAX, notification.progressMax)
+                        put(CommunicationConstants.KEY_PROGRESS_CURRENT, notification.progressCurrent)
+                        put(CommunicationConstants.KEY_PROGRESS_INDETERMINATE, notification.progressIndeterminate)
+                    }
                 }
                 sendWithWakeLock(json.toString())
             } catch (e: Exception) {

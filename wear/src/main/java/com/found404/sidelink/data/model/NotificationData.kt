@@ -13,5 +13,8 @@ data class NotificationData(
     val icon: Bitmap?,
     val timestamp: Long = System.currentTimeMillis(),
     val iconBase64: String? = null,
-    val hasReply: Boolean = false
+    val hasReply: Boolean = false,
+    val progressMax: Int = 0,
+    val progressCurrent: Int = 0,
+    val progressIndeterminate: Boolean = false
 )

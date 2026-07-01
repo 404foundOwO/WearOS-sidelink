@@ -75,6 +75,10 @@ class BluetoothCommunicationManager @Inject constructor(
     private val _volumePercentage = MutableStateFlow<Int?>(null)
     val volumePercentage: StateFlow<Int?> = _volumePercentage.asStateFlow()
 
+    // Accumulates MessagingStyle messages per notification ID so chat conversations
+    // stack up properly even when the phone sends separate notifications for each message
+    private val messagingStyleHistory = mutableMapOf<String, MutableList<Triple<String, String, Long>>>()
+
     internal var mediaSession: MediaSessionCompat? = null
 
     companion object {
@@ -285,8 +289,40 @@ class BluetoothCommunicationManager @Inject constructor(
                 CommunicationConstants.TYPE_PING -> sendPong()
 
                 CommunicationConstants.TYPE_NOTIFICATION -> {
+                    val notifId = json.getString(CommunicationConstants.KEY_ID)
+
+                    // Parse MessagingStyle messages if present
+                    val incomingMessages = mutableListOf<Triple<String, String, Long>>()
+                    json.optJSONArray(CommunicationConstants.KEY_MESSAGES)?.let { arr ->
+                        for (i in 0 until arr.length()) {
+                            val m = arr.getJSONObject(i)
+                            incomingMessages.add(Triple(
+                                m.optString(CommunicationConstants.KEY_MSG_SENDER),
+                                m.optString(CommunicationConstants.KEY_MSG_TEXT),
+                                m.optLong(CommunicationConstants.KEY_MSG_TIMESTAMP)
+                            ))
+                        }
+                    }
+                    // Accumulate: if phone sends MessagingStyle, replace history with new list
+                    // (the phone already sends the full accumulated list from extractMessagingStyleFromNotification)
+                    if (incomingMessages.isNotEmpty()) {
+                        messagingStyleHistory[notifId] = incomingMessages
+                    }
+
+                    // Parse action buttons
+                    val incomingActions = mutableListOf<Pair<Int, String>>()
+                    json.optJSONArray(CommunicationConstants.KEY_ACTIONS)?.let { arr ->
+                        for (i in 0 until arr.length()) {
+                            val a = arr.getJSONObject(i)
+                            incomingActions.add(Pair(
+                                a.getInt(CommunicationConstants.KEY_ACTION_INDEX),
+                                a.getString(CommunicationConstants.KEY_ACTION_LABEL)
+                            ))
+                        }
+                    }
+
                     val data = NotificationData(
-                        id          = json.getString(CommunicationConstants.KEY_ID),
+                        id          = notifId,
                         packageName = json.getString(CommunicationConstants.KEY_PACKAGE),
                         appName     = json.optString(CommunicationConstants.KEY_APP_NAME).takeIf { it.isNotEmpty() },
                         title       = json.optString(CommunicationConstants.KEY_TITLE),
@@ -294,11 +330,14 @@ class BluetoothCommunicationManager @Inject constructor(
                         icon        = null,
                         timestamp   = json.getLong(CommunicationConstants.KEY_TIMESTAMP),
                         iconBase64  = json.optString(CommunicationConstants.KEY_ICON),
-                        hasReply    = json.optBoolean(CommunicationConstants.KEY_HAS_REPLY, false)
+                        hasReply    = json.optBoolean(CommunicationConstants.KEY_HAS_REPLY, false),
+                        progressMax = json.optInt(CommunicationConstants.KEY_PROGRESS_MAX, 0),
+                        progressCurrent = json.optInt(CommunicationConstants.KEY_PROGRESS_CURRENT, 0),
+                        progressIndeterminate = json.optBoolean(CommunicationConstants.KEY_PROGRESS_INDETERMINATE, false)
                     )
                     repository.addOrUpdateNotification(data)
                     withContext(Dispatchers.Main) {
-                        showNativeNotification(data)
+                        showNativeNotification(data, messagingStyleHistory[notifId], incomingActions)
                         sendNotifAck(data.id)
                     }
                 }
@@ -339,6 +378,7 @@ class BluetoothCommunicationManager @Inject constructor(
                 CommunicationConstants.TYPE_DISMISS -> {
                     val id = json.getString(CommunicationConstants.KEY_ID)
                     repository.removeNotification(id)
+                    messagingStyleHistory.remove(id)
                     withContext(Dispatchers.Main) { 
                         cancelNativeNotification(id)
                         sendNotifAck(id)
@@ -356,6 +396,7 @@ class BluetoothCommunicationManager @Inject constructor(
                         currentNotifs.forEach { notif ->
                             if (!idList.contains(notif.id)) {
                                 repository.removeNotification(notif.id)
+                                messagingStyleHistory.remove(notif.id)
                                 withContext(Dispatchers.Main) { cancelNativeNotification(notif.id) }
                             }
                         }
@@ -400,6 +441,12 @@ class BluetoothCommunicationManager @Inject constructor(
         put(CommunicationConstants.KEY_VALUE, delta)
     }.toString())
 
+    fun sendActionTrigger(notificationId: String, actionIndex: Int) = send(JSONObject().apply {
+        put(CommunicationConstants.KEY_TYPE, CommunicationConstants.TYPE_ACTION_TRIGGER)
+        put(CommunicationConstants.KEY_ID, notificationId)
+        put(CommunicationConstants.KEY_ACTION_INDEX, actionIndex)
+    }.toString())
+
     private fun sendNotifAck(id: String) = send(JSONObject().apply {
         put(CommunicationConstants.KEY_TYPE, CommunicationConstants.TYPE_NOTIF_ACK)
         put(CommunicationConstants.KEY_DATA, id)
@@ -431,7 +478,7 @@ class BluetoothCommunicationManager @Inject constructor(
             .createNotificationChannel(channel)
     }
 
-    private fun showNativeNotification(data: NotificationData) {
+    private fun showNativeNotification(data: NotificationData, messages: List<Triple<String, String, Long>>? = null, actions: List<Pair<Int, String>> = emptyList()) {
         try {
             val nm = NotificationManagerCompat.from(context)
 
@@ -471,12 +518,53 @@ class BluetoothCommunicationManager @Inject constructor(
                     val builder = NotificationCompat.Builder(context, "mirrored_notifs")
                         .setSmallIcon(android.R.drawable.stat_notify_chat)
                         .setLargeIcon(iconBitmap)
-                        .setContentTitle(data.title)
-                        .setContentText(data.text)
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setAutoCancel(true)
                         .setDeleteIntent(dismissPendingIntent)
                         .apply { if (data.hasReply) addAction(replyAction) }
+                        .apply {
+                            actions.forEach { (index, label) ->
+                                val actionIntent = Intent(context, WearNotificationReceiver::class.java).apply {
+                                    action = "com.found404.sidelink.ACTION_TRIGGER"
+                                    putExtra("notification_id", data.id)
+                                    putExtra("action_index", index)
+                                }
+                                val actionPendingIntent = PendingIntent.getBroadcast(
+                                    context, (data.id.hashCode() + index + 100),
+                                    actionIntent,
+                                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                )
+                                addAction(NotificationCompat.Action.Builder(
+                                    android.R.drawable.ic_menu_send, label, actionPendingIntent
+                                ).build())
+                            }
+                        }
+
+                    if (!messages.isNullOrEmpty()) {
+                        // Use MessagingStyle for chat-style rendering on the watch
+                        val me = androidx.core.app.Person.Builder().setName("Me").build()
+                        val style = NotificationCompat.MessagingStyle(me)
+                            .setConversationTitle(data.title)
+                        val senderIcon = iconBitmap?.let {
+                            androidx.core.graphics.drawable.IconCompat.createWithBitmap(it)
+                        }
+                        messages.forEach { (sender, text, ts) ->
+                            val person = androidx.core.app.Person.Builder()
+                                .setName(sender)
+                                .apply { senderIcon?.let { setIcon(it) } }
+                                .build()
+                            style.addMessage(text, ts, person)
+                        }
+                        builder.setStyle(style)
+                    } else {
+                        builder.setContentTitle(data.title)
+                            .setContentText(data.text)
+                    }
+
+                    if (data.progressIndeterminate || data.progressMax > 0) {
+                        builder.setProgress(data.progressMax, data.progressCurrent, data.progressIndeterminate)
+                    }
+
                     nm.notify(data.id.hashCode(), builder.build())
                 }
             }

@@ -59,6 +59,8 @@ class WearMirrorService : Service() {
         }
     }
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service onCreate")
@@ -66,9 +68,20 @@ class WearMirrorService : Service() {
             createNotificationChannel()
             startForegroundServiceSafe()
             commManager.startServer()
-
-            // Register battery receiver
             registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+            // Update foreground notification with live connection status
+            serviceScope.launch {
+                commManager.connectionStatus.collect { status ->
+                    val text = when (status) {
+                        com.found404.sidelink.communication.ConnectionStatus.CONNECTED -> "Phone connected"
+                        com.found404.sidelink.communication.ConnectionStatus.WAITING -> "Waiting for phone · Keep-alive"
+                        com.found404.sidelink.communication.ConnectionStatus.DISCONNECTED -> "Disconnected"
+                    }
+                    getSystemService(NotificationManager::class.java)
+                        ?.notify(NOTIFICATION_ID, createNotification("Service active", text))
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Fatal Error in Service", e)
             stopSelf()
@@ -77,7 +90,7 @@ class WearMirrorService : Service() {
 
     private fun startForegroundServiceSafe() {
         try {
-            val notification = createNotification("Sidelink Active", "Waiting for phone...")
+            val notification = createNotification("Service active", "Waiting for phone · Keep-alive")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
             } else {
@@ -90,7 +103,14 @@ class WearMirrorService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Sidelink Service", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Sidelink Keep-Alive",
+                NotificationManager.IMPORTANCE_MIN
+            ).apply {
+                description = "Keep-alive service to maintain notification mirroring. Safe to ignore."
+                setShowBadge(false)
+            }
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
@@ -101,7 +121,8 @@ class WearMirrorService : Service() {
             .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setSilent(true)
             .build()
     }
 
@@ -110,6 +131,7 @@ class WearMirrorService : Service() {
 
     override fun onDestroy() {
         try { unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
+        serviceScope.cancel()
         commManager.stop()
         super.onDestroy()
     }

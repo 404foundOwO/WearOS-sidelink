@@ -27,6 +27,8 @@ import androidx.core.app.NotificationCompat
 import com.found404.sidelink.communication.BluetoothCommunicationManager
 import com.found404.sidelink.data.model.MediaData
 import com.found404.sidelink.data.model.NotificationData
+import com.found404.sidelink.data.model.NotifMessage
+import com.found404.sidelink.data.model.NotifAction
 import com.found404.sidelink.data.repository.MirrorRepository
 import com.found404.sidelink.data.repository.SettingsRepository
 import com.found404.sidelink.shared.CommunicationConstants
@@ -43,6 +45,8 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var settingsRepository: SettingsRepository
     private val audioManager: AudioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    // Cache of live StatusBarNotifications so action PendingIntents can be fired from the watch
+    private val activeSbnCache = mutableMapOf<String, android.service.notification.StatusBarNotification>()
     private var currentArtQuality = 240
     private var mirrorMediaEnabled = true
     private var maxMirroredNotifications = 50
@@ -130,7 +134,7 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
             " · Watch ${watchBatteryLevel}%"
         } else ""
         return NotificationCompat.Builder(this, "mirror_service")
-            .setContentTitle("Sidelink Active")
+            .setContentTitle("Service active")
             .setContentText("Syncing with watch$batteryText")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -203,6 +207,20 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
         }
     }
 
+    override fun onActionTriggerReceived(notificationId: String, actionIndex: Int) {
+        try {
+            val sbn = activeSbnCache[notificationId] ?: return
+            val action = sbn.notification.actions?.getOrNull(actionIndex) ?: return
+            // Only fire actions without RemoteInput (reply is handled separately)
+            if (action.remoteInputs.isNullOrEmpty()) {
+                action.actionIntent.send()
+                Log.d(TAG, "Fired action '${ action.title}' on $notificationId")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "onActionTriggerReceived failed", e)
+        }
+    }
+
     override fun onWatchBatteryReceived(level: Int) {
         if (level >= 0) {
             watchBatteryLevel = level
@@ -240,12 +258,16 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
         val isOngoing = (flags and Notification.FLAG_ONGOING_EVENT) != 0
         val isNoClear = (flags and Notification.FLAG_NO_CLEAR) != 0
         val isGroupSummary = (flags and Notification.FLAG_GROUP_SUMMARY) != 0
+        // Allow ongoing notifications through if they have progress (downloads, uploads, etc.)
+        val hasProgress = sbn.notification.extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0
+                || sbn.notification.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false)
 
-        return !isOngoing && !isNoClear && !isGroupSummary
+        return !isGroupSummary && (!isOngoing && !isNoClear || hasProgress)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn == null) return
+        activeSbnCache[sbn.key] = sbn
         serviceScope.launch {
             try {
                 val blacklisted = settingsRepository.blacklistedPackages.first()
@@ -269,6 +291,7 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         if (sbn == null) return
+        activeSbnCache.remove(sbn.key)
         MirrorRepository.removeNotification(sbn.key)
         communicationManager.dismissNotification(sbn.key)
     }
@@ -363,7 +386,19 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
             val title = notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
             val text = notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
             if (title == null && text == null) return@withContext null
-            
+
+            // Extract MessagingStyle if available (WhatsApp, Telegram, Messages, etc.)
+            val messages: List<NotifMessage> = try {
+                val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
+                style?.messages?.map<NotificationCompat.MessagingStyle.Message, NotifMessage> { msg ->
+                    NotifMessage(
+                        sender = msg.person?.name?.toString() ?: msg.sender?.toString() ?: title ?: "",
+                        text = msg.text?.toString() ?: "",
+                        timestamp = msg.timestamp
+                    )
+                } ?: emptyList()
+            } catch (e: Exception) { emptyList() }
+
             val icon = try {
                 val userContext = try { createPackageContext(packageName, 0) } catch (e: Exception) { this@SidelinkService }
                 val iconObj = notification.getLargeIcon() ?: notification.smallIcon
@@ -371,10 +406,23 @@ class SidelinkService : NotificationListenerService(), BluetoothCommunicationMan
             } catch (e: Exception) {
                 try { packageManager.getApplicationIcon(packageName).let { drawableToBitmap(it) } } catch (ignore: Exception) { null }
             }
-            
+
             val hasReply = notification.actions?.any { it.remoteInputs?.isNotEmpty() == true } == true
+            // Extract non-reply actions (reply is handled via RemoteInput separately)
+            val actions = notification.actions?.mapIndexedNotNull { index, action ->
+                if (action.remoteInputs.isNullOrEmpty() && !action.title.isNullOrBlank()) {
+                    NotifAction(index = index, label = action.title.toString())
+                } else null
+            } ?: emptyList()
             val resolvedAppName = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString() } catch (e: Exception) { packageName }
-            NotificationData(id = key, packageName = packageName, appName = resolvedAppName, title = title, text = text, icon = icon, hasReply = hasReply, key = key)
+
+            // Extract progress info if present
+            val extras = notification.extras
+            val progressMax = extras.getInt(android.app.Notification.EXTRA_PROGRESS_MAX, 0)
+            val progressCurrent = extras.getInt(android.app.Notification.EXTRA_PROGRESS, 0)
+            val progressIndeterminate = extras.getBoolean(android.app.Notification.EXTRA_PROGRESS_INDETERMINATE, false)
+
+            NotificationData(id = key, packageName = packageName, appName = resolvedAppName, title = title, text = text, icon = icon, hasReply = hasReply, key = key, messages = messages, actions = actions, progressMax = progressMax, progressCurrent = progressCurrent, progressIndeterminate = progressIndeterminate)
         } catch (e: Exception) {
             null
         }

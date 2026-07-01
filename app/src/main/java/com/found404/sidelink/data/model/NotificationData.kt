@@ -5,6 +5,17 @@ import android.graphics.BitmapFactory
 import com.found404.sidelink.data.local.NotificationEntity
 import java.io.ByteArrayOutputStream
 
+data class NotifMessage(
+    val sender: String,
+    val text: String,
+    val timestamp: Long
+)
+
+data class NotifAction(
+    val index: Int,
+    val label: String
+)
+
 data class NotificationData(
     val id: String,
     val packageName: String,
@@ -14,7 +25,12 @@ data class NotificationData(
     val icon: Bitmap?,
     val timestamp: Long = System.currentTimeMillis(),
     val hasReply: Boolean = false,
-    val key: String = id
+    val key: String = id,
+    val messages: List<NotifMessage> = emptyList(),
+    val actions: List<NotifAction> = emptyList(),
+    val progressMax: Int = 0,
+    val progressCurrent: Int = 0,
+    val progressIndeterminate: Boolean = false
 ) {
     fun toEntity(): NotificationEntity {
         val stream = ByteArrayOutputStream()
